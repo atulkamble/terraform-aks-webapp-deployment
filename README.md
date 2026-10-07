@@ -155,7 +155,7 @@ Install
 
 ### Local application
 
-1. Build with `docker build -t aks-webapp:v1 ./app`.
+1. Build with `docker buildx build --platform linux/amd64,linux/arm64 -t aks-webapp:v1 ./app`.
 2. Start with `docker run -d --name aks-webapp --read-only --tmpfs /tmp:uid=101,gid=101 -p 8080:8080 aks-webapp:v1`.
 3. Open `http://localhost:8080`; verify `curl --fail http://localhost:8080/health`.
 
