@@ -192,7 +192,27 @@ log_analytics_workspace_id = "/subscriptions/08b7b8d4-af42-4972-9517-11ea256ea06
 resource_group_name = "rg-aks-production"
 ```
 6. Ensure your publishing identity can push to ACR. Allow role assignments to propagate, then run `bash scripts/deploy-app.sh v1` from the repository root. It builds a Linux AMD64 image, pushes it, replaces the manifest image placeholder, and deploys to AKS.
-7. Run `kubectl get pods,svc,hpa -n production`. Wait for the external IP of `webapp-service`, then open `http://<EXTERNAL-IP>`.
+```
+which kubectl
+kubectl version --client
+
+brew install Azure/kubelogin/kubelogin
+
+kubelogin --version
+which kubelogin
+
+sudo az aks install-cli
+
+az aks get-credentials \
+  --resource-group rg-aks-production \
+  --name aks-production \
+  --overwrite-existing
+
+kubelogin convert-kubeconfig -l azurecli
+
+kubectl get nodes
+```
+8. Run `kubectl get pods,svc,hpa -n production`. Wait for the external IP of `webapp-service`, then open `http://<EXTERNAL-IP>`.
 
 Keep the Terraform lock file committed. Local settings, state, and plans are ignored by Git.
 
