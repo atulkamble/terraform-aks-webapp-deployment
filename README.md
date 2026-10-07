@@ -223,12 +223,14 @@ resource_group_name = "rg-aks-production"
 6. Ensure your publishing identity can push to ACR. Allow role assignments to propagate, then run `bash scripts/deploy-app.sh v1` from the repository root. It builds a Linux AMD64 image, pushes it, replaces the manifest image placeholder, and deploys to AKS.
 ```
 which kubectl
+
 kubectl version --client
 
 brew install Azure/kubelogin/kubelogin
 
-kubelogin --version
 which kubelogin
+
+kubelogin --version
 
 sudo az aks install-cli
 
@@ -240,6 +242,39 @@ az aks get-credentials \
 kubelogin convert-kubeconfig -l azurecli
 
 kubectl get nodes
+
+az acr repository list \
+  --name atulkamble \
+  --output table
+
+az acr repository show-tags \
+  --name atulkamble \
+  --repository webapp \
+  --output table
+
+kubectl apply -f kubernetes/deployment.yaml
+
+kubectl rollout status deployment/webapp \
+  -n production
+
+kubectl apply -f kubernetes/hpa.yaml
+
+kubectl get pods \
+  -n production \
+  -o wide
+
+kubectl get hpa \
+  -n production
+
+kubectl get svc webapp-service \
+  -n production
+
+kubectl get all \
+  -n production
+
+kubectl get svc webapp-service \
+  -n production \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 ```
 8. Run `kubectl get pods,svc,hpa -n production`. Wait for the external IP of `webapp-service`, then open `http://<EXTERNAL-IP>`.
 
