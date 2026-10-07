@@ -1,0 +1,30 @@
+parameters:
+  - name: command
+    type: string
+    values: [plan, apply]
+
+steps:
+  - task: AzureCLI@2
+    displayName: Terraform ${{ parameters.command }}
+    inputs:
+      azureSubscription: $(azureServiceConnection)
+      scriptType: bash
+      scriptLocation: inlineScript
+      addSpnToEnvironment: true
+      inlineScript: |
+        set -euo pipefail
+        bash scripts/terraform-ci.sh '${{ parameters.command }}'
+    env:
+      ARM_OIDC_REQUEST_TOKEN: $(System.AccessToken)
+      TFSTATE_RESOURCE_GROUP: $(tfstateResourceGroup)
+      TFSTATE_STORAGE_ACCOUNT: $(tfstateStorageAccount)
+      TFSTATE_CONTAINER: $(tfstateContainer)
+      TFSTATE_KEY: $(tfstateKey)
+      TF_VAR_location: $(location)
+      TF_VAR_resource_group_name: $(resourceGroup)
+      TF_VAR_aks_name: $(aksCluster)
+      TF_VAR_acr_name: $(acrName)
+      TF_VAR_vnet_name: $(vnetName)
+      TF_VAR_node_vm_size: $(nodeVmSize)
+      TF_VAR_admin_principal_ids: $(adminPrincipalIds)
+      PLAN_PATH: $(Pipeline.Workspace)/terraform-plan/tfplan

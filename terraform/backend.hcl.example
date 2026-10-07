@@ -1,0 +1,4 @@
+resource_group_name  = "rg-tfstate-prod"
+storage_account_name = "REPLACE_WITH_UNIQUE_STORAGE_ACCOUNT"
+container_name       = "tfstate"
+key                  = "production.aks.tfstate"

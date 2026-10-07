@@ -1,0 +1,9 @@
+subscription_id     = "YOUR-SUBSCRIPTION-ID"
+location            = "centralindia"
+resource_group_name = "rg-aks-production"
+aks_name            = "aks-production"
+acr_name            = "YOURUNIQUEACRNAME"
+vnet_name           = "vnet-aks-production"
+
+# Use object IDs, not application/client IDs. Include the application pipeline identity.
+admin_principal_ids = ["YOUR-ENTRA-USER-OBJECT-ID", "YOUR-PIPELINE-PRINCIPAL-OBJECT-ID"]

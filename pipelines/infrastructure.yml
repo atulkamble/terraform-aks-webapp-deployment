@@ -1,0 +1,84 @@
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include:
+      - terraform/*
+      - pipelines/infrastructure.yml
+      - pipelines/templates/*
+      - scripts/terraform-ci.sh
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - name: vnetName
+    value: vnet-aks-production
+  - name: nodeVmSize
+    value: Standard_D2s_v5
+  - group: aks-production
+  - name: azureServiceConnection
+    value: azure-production-connection
+  - name: terraformVersion
+    value: '1.15.6'
+
+lockBehavior: sequential
+
+stages:
+  - stage: Validate
+    jobs:
+      - job: TerraformValidate
+        steps:
+          - checkout: self
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: $(terraformVersion)
+          - bash: |
+              set -euo pipefail
+              terraform -chdir=terraform fmt -check -recursive
+              terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+              terraform -chdir=terraform validate
+            displayName: Format and validate Terraform
+
+  - stage: Plan
+    dependsOn: Validate
+    # Pull requests may validate, but cannot plan or deploy to production.
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: TerraformPlan
+        steps:
+          - checkout: self
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: $(terraformVersion)
+          - template: templates/terraform-run.yml
+            parameters:
+              command: plan
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: $(System.DefaultWorkingDirectory)/terraform/tfplan
+              artifact: terraform-plan
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: $(System.DefaultWorkingDirectory)/terraform/plan.txt
+              artifact: terraform-plan-review
+
+  - stage: Apply
+    dependsOn: Plan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - deployment: TerraformApply
+        environment: production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - download: current
+                  artifact: terraform-plan
+                - task: TerraformInstaller@1
+                  inputs:
+                    terraformVersion: $(terraformVersion)
+                - template: templates/terraform-run.yml
+                  parameters:
+                    command: apply
