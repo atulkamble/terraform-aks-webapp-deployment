@@ -306,6 +306,18 @@ port   → 8080
 Enable Review App flow for Pull Requests
 Validate and Configure
 ```
+## Check AKS Configuration
+```
+az aks show \
+  --resource-group rg-aks-production \
+  --name aks-production \
+  --query '{
+    disableLocalAccounts:disableLocalAccounts,
+    enableRBAC:enableRbac,
+    aadProfile:aadProfile
+  }' \
+  -o json
+```
 
 1. Create a workload identity federation service connection named `azure-production-connection`. Assign provisioning, state, image-publishing, and AKS access as described above.
 2. Install the Microsoft DevLabs Terraform extension. Create and authorize the `aks-production` variable group.
