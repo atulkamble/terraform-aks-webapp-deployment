@@ -171,8 +171,18 @@ After building and starting the container above, inspect the response with `curl
 2. Run `TFSTATE_STORAGE_ACCOUNT=<unique-lowercase-name> bash scripts/bootstrap-state.sh`. It generates `terraform/backend.hcl`; for existing state storage, copy and edit [terraform/backend.hcl.example](terraform/backend.hcl.example) instead. Grant state access to the pipeline identity separately.
 3. Run `terraform -chdir=terraform fmt -check -recursive`, then `terraform -chdir=terraform init -backend-config=backend.hcl` and `terraform -chdir=terraform validate`.
 4. Run `terraform -chdir=terraform plan -out=tfplan`, review the plan, then run `terraform -chdir=terraform apply tfplan`.
-5. Ensure your publishing identity can push to ACR. Allow role assignments to propagate, then run `bash scripts/deploy-app.sh v1` from the repository root. It builds a Linux AMD64 image, pushes it, replaces the manifest image placeholder, and deploys to AKS.
-6. Run `kubectl get pods,svc,hpa -n production`. Wait for the external IP of `webapp-service`, then open `http://<EXTERNAL-IP>`.
+Example:
+```
+az ad signed-in-user show \
+  --query id \
+  -o tsv
+
+["569e301d-629a-4d19-a477-a250605ef6ba"]
+
+08b7b8d4-af42-4972-9517-11ea256ea068
+```
+6. Ensure your publishing identity can push to ACR. Allow role assignments to propagate, then run `bash scripts/deploy-app.sh v1` from the repository root. It builds a Linux AMD64 image, pushes it, replaces the manifest image placeholder, and deploys to AKS.
+7. Run `kubectl get pods,svc,hpa -n production`. Wait for the external IP of `webapp-service`, then open `http://<EXTERNAL-IP>`.
 
 Keep the Terraform lock file committed. Local settings, state, and plans are ignored by Git.
 
