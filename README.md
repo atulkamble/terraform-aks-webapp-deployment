@@ -181,6 +181,16 @@ az ad signed-in-user show \
 
 08b7b8d4-af42-4972-9517-11ea256ea068
 ```
+### Terraform Outputs:
+```
+acr_login_server = "atulkamble.azurecr.io"
+acr_name = "atulkamble"
+aks_id = "/subscriptions/08b7b8d4-af42-4972-9517-11ea256ea068/resourceGroups/rg-aks-production/providers/Microsoft.ContainerService/managedClusters/aks-production"
+aks_name = "aks-production"
+aks_oidc_issuer_url = "https://centralindia.oic.prod-aks.azure.com/bc281606-c655-4c05-90f2-49309a59c59f/2f5a3401-d58f-44f5-acc0-70de9999d46e/"
+log_analytics_workspace_id = "/subscriptions/08b7b8d4-af42-4972-9517-11ea256ea068/resourceGroups/rg-aks-production/providers/Microsoft.OperationalInsights/workspaces/aks-production-logs"
+resource_group_name = "rg-aks-production"
+```
 6. Ensure your publishing identity can push to ACR. Allow role assignments to propagate, then run `bash scripts/deploy-app.sh v1` from the repository root. It builds a Linux AMD64 image, pushes it, replaces the manifest image placeholder, and deploys to AKS.
 7. Run `kubectl get pods,svc,hpa -n production`. Wait for the external IP of `webapp-service`, then open `http://<EXTERNAL-IP>`.
 
