@@ -3,15 +3,354 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Production AKS Web App</title>
+  <meta name="theme-color" content="#f7f8f5">
+  <meta name="description" content="An Azure Kubernetes platform built with Terraform, Docker, and Azure Pipelines. Explore the deployment workflow and check application health.">
+  <title>AKS Platform · Production AKS Deployment</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin: 100px 24px; }
-    h1 { color: #0078d4; }
+    :root {
+      color-scheme: light;
+      --background: #f7f8f5;
+      --surface: #ffffff;
+      --ink: #202921;
+      --muted: #657066;
+      --line: #e0e5dc;
+      --orange: #bc4525;
+      --orange-light: #fbece5;
+      --green: #27744f;
+      --radius: 20px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+    body { margin: 0; background: var(--background); color: var(--ink); font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .65; }
+    a, button { -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 3px solid var(--orange); outline-offset: 5px; }
+    ::selection { background: #f6d6c7; }
+    .container { width: min(1160px, calc(100% - 80px)); margin-inline: auto; }
+    .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .eyebrow { font-size: 11px; font-weight: 650; letter-spacing: .12em; text-transform: uppercase; }
+    .skip-link { position: absolute; top: -100px; left: 16px; background: var(--ink); color: white; padding: 12px 20px; z-index: 10; }
+    .skip-link:focus { top: 12px; }
+    .header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-block: 27px; border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 21px; font-weight: 750; letter-spacing: -.8px; }
+    .brand-mark { width: 34px; height: 34px; background: var(--ink); color: white; display: grid; place-items: center; border-radius: 9px; }
+    .brand span:last-child { color: var(--orange); }
+    .navigation { display: flex; align-items: center; gap: 30px; font-size: 13px; font-weight: 550; color: var(--muted); }
+    .navigation a { padding-block: 8px; transition: color .18s; }
+    .navigation a:hover { color: var(--orange); }
+    .header-check { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 9px; background: transparent; padding: 10px 15px; font-size: 12px; font-weight: 600; color: var(--ink); transition: background .18s; }
+    .header-check:hover { background: var(--surface); }
+    .header-check .icon { width: 15px; height: 15px; }
+    .hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: 65px; align-items: center; padding-block: 80px 66px; }
+    .hero-label { display: inline-flex; align-items: center; gap: 9px; padding: 8px 11px; background: var(--orange-light); border: 1px solid #efd7c9; border-radius: 6px; color: var(--orange); font-size: 11px; font-weight: 650; }
+    .hero-label .icon { width: 14px; height: 14px; }
+    h1 { font-size: clamp(42px, 4.7vw, 66px); line-height: 1.06; letter-spacing: -.065em; font-weight: 650; margin: 24px 0 22px; }
+    h1 em { color: var(--orange); font-style: normal; }
+    .hero-description { max-width: 410px; font-size: 16px; line-height: 1.75; color: var(--muted); margin: 0; }
+    .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 22px; margin-top: 30px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 16px; padding: 14px 19px; border-radius: 9px; background: var(--ink); color: white; border: 1px solid var(--ink); font-size: 13px; font-weight: 600; transition: transform .18s, background .18s; }
+    .button:hover { background: #354237; transform: translateY(-2px); }
+    .button .icon { width: 16px; height: 16px; }
+    .text-link { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 600; }
+    .text-link:hover { color: var(--orange); }
+    .text-link .icon { width: 15px; height: 15px; }
+    .hero-note { display: flex; align-items: center; gap: 7px; margin-top: 25px; color: var(--muted); font-size: 11px; }
+    .hero-note .icon { width: 13px; height: 13px; color: var(--green); }
+    .blueprint { margin: 0; position: relative; padding: 26px; border-radius: 24px; background-color: #202b25; background-image: radial-gradient(#3c4740 1px, transparent 1px); background-size: 18px 18px; color: #f2f5ef; box-shadow: 0 24px 50px -34px #1a2b25; overflow: hidden; }
+    .blueprint::before { content: ""; position: absolute; width: 200px; height: 200px; border: 1px solid #47524a; border-radius: 50%; top: -110px; right: -70px; pointer-events: none; }
+    .blueprint-heading { position: relative; display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; color: #b7c6b9; }
+    .blueprint-heading .eyebrow { font-size: 9px; }
+    .blueprint-heading .icon { width: 21px; height: 21px; }
+    .blueprint-title { font-size: 29px; letter-spacing: -1.2px; line-height: 1.2; font-weight: 550; margin: 0 0 22px; }
+    .workflow-node { position: relative; display: flex; align-items: center; gap: 13px; background: #303d33; border: 1px solid #4a584d; border-radius: 11px; padding: 15px; }
+    .node-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; background: #414e44; color: #d9e4d4; flex-shrink: 0; }
+    .node-copy { flex: 1; }
+    .node-title { display: block; font-size: 13px; font-weight: 600; }
+    .node-description { display: block; margin-top: 4px; color: #c0cdc2; font-size: 10px; }
+    .node-number { font-size: 10px; color: #b3c2b6; }
+    .connector { display: flex; align-items: center; gap: 8px; height: 23px; padding-left: 33px; color: #bdcabe; font-size: 8px; letter-spacing: .08em; }
+    .connector::before { content: ""; display: block; height: 100%; border-left: 1px dashed #87948a; }
+    .workflow-node.accent { border-color: #93a683; background: #3b4b3a; }
+    .workflow-node.accent .node-icon { background: #c4d5b3; color: #263523; }
+    .blueprint-caption { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 23px; font-size: 9px; letter-spacing: .035em; color: #c0cdc2; }
+    .blueprint-caption span:last-child { display: flex; gap: 4px; }
+    .pod { width: 10px; height: 10px; border: 1px solid #c4d5b3; border-radius: 2px; background: #7f9670; }
+    .stack { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 22px 0; border-block: 1px solid var(--line); }
+    .stack-label { color: var(--muted); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+    .stack-items { display: flex; gap: 35px; flex-wrap: wrap; }
+    .stack-items span { font-size: 12px; font-weight: 650; letter-spacing: -.2px; color: #536054; }
+    .section { padding-top: 68px; }
+    .section-top { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 25px; }
+    .section-eyebrow { color: var(--orange); margin: 0 0 11px; }
+    h2 { font-size: clamp(25px, 3vw, 34px); font-weight: 600; line-height: 1.18; letter-spacing: -1.3px; margin: 0; }
+    .section-summary { max-width: 290px; color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0; }
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 17px; }
+    .feature { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; }
+    .feature-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+    .feature-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: var(--orange-light); color: var(--orange); }
+    .feature-index { color: #778074; font-size: 10px; }
+    h3 { font-size: 17px; font-weight: 600; letter-spacing: -.45px; margin: 0 0 10px; }
+    .feature p { font-size: 12px; line-height: 1.75; color: var(--muted); margin: 0; }
+    .feature-detail { border-top: 1px solid var(--line); margin-top: 25px; padding-top: 15px; color: #566252; font-size: 10px; }
+    .delivery { border-bottom: 1px solid var(--line); padding-bottom: 48px; }
+    .delivery-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; list-style: none; margin: 30px 0 0; padding: 0; }
+    .step-line { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
+    .step-number { border: 1px solid var(--line); border-radius: 50%; width: 29px; height: 29px; display: grid; place-items: center; font-size: 10px; color: var(--muted); flex-shrink: 0; }
+    .step-line::after { content: ""; height: 1px; width: 100%; background: var(--line); }
+    .delivery-steps h3 { font-size: 13px; margin-bottom: 7px; }
+    .delivery-steps p { font-size: 11px; color: var(--muted); line-height: 1.7; margin: 0; }
+    .health-panel { margin-top: 48px; padding: 30px; background: #edf0e8; border: 1px solid #dce2d4; border-radius: var(--radius); }
+    .health-top { display: flex; justify-content: space-between; align-items: center; gap: 25px; }
+    .health-top h2 { font-size: 25px; }
+    .health-top .section-eyebrow { color: #52664b; }
+    .health-data { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 26px; padding-top: 22px; border-top: 1px solid #d5ddcd; }
+    .health-data dt { color: var(--muted); font-size: 10px; margin-bottom: 8px; }
+    .health-data dd { margin: 0; font-size: 13px; font-weight: 550; display: flex; align-items: center; gap: 7px; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #7c8774; flex-shrink: 0; }
+    .health-panel[data-state="healthy"] .status-dot { background: var(--green); }
+    .health-panel[data-state="error"] .status-dot { background: var(--orange); }
+    .health-message { color: #5a6653; font-size: 11px; line-height: 1.6; margin: 18px 0 0; }
+    .footer { margin-top: 60px; padding: 25px 0 30px; display: flex; justify-content: space-between; align-items: center; gap: 20px; color: var(--muted); font-size: 10px; border-top: 1px solid var(--line); }
+    .footer-name { color: var(--ink); font-size: 12px; font-weight: 650; }
+    .footer a { display: inline-flex; align-items: center; gap: 6px; }
+    .footer .icon { width: 12px; height: 12px; }
+    @media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
+      .hero-copy, .blueprint { animation: enter .7s ease-out both; }
+      .blueprint { animation-delay: .1s; }
+      @keyframes enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    }
+    @media (max-width: 980px) {
+      .hero { gap: 35px; }
+      .navigation { gap: 20px; }
+      .stack-items { gap: 20px; }
+      .feature { padding: 22px; }
+    }
+    @media (max-width: 760px) {
+      .container { width: calc(100% - 40px); }
+      .header { flex-wrap: wrap; gap: 18px; padding-block: 20px; }
+      .navigation { order: 3; width: 100%; justify-content: center; gap: 35px; border-top: 1px solid var(--line); padding-top: 12px; }
+      .hero { grid-template-columns: 1fr; padding-block: 45px 35px; gap: 35px; }
+      h1 { font-size: clamp(42px, 8vw, 60px); }
+      .hero-description { max-width: 500px; font-size: 15px; }
+      .blueprint { max-width: 500px; width: 100%; justify-self: center; }
+      .stack { flex-direction: column; align-items: flex-start; gap: 14px; }
+      .stack-items { gap: 17px 24px; }
+      .section { padding-top: 45px; }
+      .section-top { align-items: flex-start; flex-direction: column; gap: 14px; }
+      .section-summary { max-width: 480px; }
+      .features { grid-template-columns: 1fr; }
+      .feature-top { margin-bottom: 20px; }
+      .delivery-steps { grid-template-columns: 1fr 1fr; gap: 26px 20px; }
+      .health-panel { padding: 24px; margin-top: 35px; }
+      .health-top { align-items: flex-start; flex-direction: column; gap: 20px; }
+      .health-data { gap: 15px; }
+      .health-data dd { font-size: 11px; }
+      .footer { flex-wrap: wrap; margin-top: 40px; gap: 14px; }
+    }
+    @media (max-width: 380px) {
+      .container { width: calc(100% - 32px); }
+      .brand { font-size: 18px; }
+      .header-check { padding: 10px; }
+      .hero-actions { gap: 18px; }
+      .health-data { grid-template-columns: 1fr; gap: 16px; }
+      .blueprint { padding: 22px; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
   </style>
 </head>
 <body>
-  <h1>Production AKS Deployment</h1>
-  <h2>Terraform + Docker + ACR + AKS</h2>
-  <p>Deployed using Azure Pipelines</p>
+  <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
+    <symbol id="icon-cube" viewBox="0 0 24 24"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Z"/><path d="m3 8 9 5 9-5M12 13v8M7.5 5.5l9 5"/></symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="icon-up-right" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></symbol>
+    <symbol id="icon-layers" viewBox="0 0 24 24"><path d="m12 3 10 5-10 5L2 8l10-5Zm-10 9 10 5 10-5M2 16l10 5 10-5"/></symbol>
+    <symbol id="icon-code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 4l-4 16"/></symbol>
+    <symbol id="icon-scale" viewBox="0 0 24 24"><path d="M4 14v6h6M20 10V4h-6M4 20l6-6m10-10-6 6"/></symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="icon-pulse" viewBox="0 0 24 24"><path d="M2 12h5l3-8 4 16 3-8h5"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  </svg>
+  <a class="skip-link" href="#overview">Skip to content</a>
+  <div class="container">
+    <header class="header">
+      <a class="brand" href="#overview" aria-label="AKS platform home">
+        <span class="brand-mark"><svg class="icon" aria-hidden="true"><use href="#icon-cube"/></svg></span>
+        <span>aks<span>.platform</span></span>
+      </a>
+      <nav class="navigation" aria-label="Main navigation">
+        <a href="#overview">Overview</a>
+        <a href="#platform">The platform</a>
+        <a href="#delivery">Delivery flow</a>
+      </nav>
+      <button class="header-check" type="button" data-health-check>
+        <svg class="icon" aria-hidden="true"><use href="#icon-pulse"/></svg>
+        <span>Check health</span>
+        <svg class="icon" aria-hidden="true"><use href="#icon-up-right"/></svg>
+      </button>
+    </header>
+
+    <main>
+      <section class="hero" id="overview" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <div class="hero-label"><svg class="icon" aria-hidden="true"><use href="#icon-layers"/></svg>Production AKS Deployment</div>
+          <h1 id="hero-title">Infrastructure.<br>Without the<br><em>friction.</em></h1>
+          <p class="hero-description">From your first commit to your next release. A clear, repeatable path to running your application on Azure Kubernetes.</p>
+          <div class="hero-actions">
+            <a class="button" href="#platform">Explore the platform <svg class="icon" aria-hidden="true"><use href="#icon-arrow"/></svg></a>
+            <a class="text-link" href="#delivery">See how it works <svg class="icon" aria-hidden="true"><use href="#icon-up-right"/></svg></a>
+          </div>
+          <p class="hero-note"><svg class="icon" aria-hidden="true"><use href="#icon-check"/></svg>Versioned infrastructure. Controlled releases.</p>
+        </div>
+        <figure class="blueprint" aria-labelledby="blueprint-title">
+          <div class="blueprint-heading"><span class="eyebrow mono">The deployment blueprint</span><svg class="icon" aria-hidden="true"><use href="#icon-cube"/></svg></div>
+          <p class="blueprint-title" id="blueprint-title">Code. Ship. Scale.</p>
+          <div class="workflow-node">
+            <span class="node-icon"><svg class="icon" aria-hidden="true"><use href="#icon-code"/></svg></span>
+            <div class="node-copy"><span class="node-title">Terraform</span><span class="node-description">Provision the foundation</span></div>
+            <span class="node-number mono">01</span>
+          </div>
+          <div class="connector mono" aria-hidden="true">BUILD ON YOUR PLATFORM</div>
+          <div class="workflow-node">
+            <span class="node-icon"><svg class="icon" aria-hidden="true"><use href="#icon-layers"/></svg></span>
+            <div class="node-copy"><span class="node-title">Docker + ACR</span><span class="node-description">Package and publish your application</span></div>
+            <span class="node-number mono">02</span>
+          </div>
+          <div class="connector mono" aria-hidden="true">RELEASE WITH CONFIDENCE</div>
+          <div class="workflow-node accent">
+            <span class="node-icon"><svg class="icon" aria-hidden="true"><use href="#icon-cube"/></svg></span>
+            <div class="node-copy"><span class="node-title">Azure Kubernetes</span><span class="node-description">Deploy, observe, and scale</span></div>
+            <span class="node-number mono">03</span>
+          </div>
+          <figcaption class="blueprint-caption mono"><span>3 INITIAL APPLICATION REPLICAS</span><span aria-hidden="true"><i class="pod"></i><i class="pod"></i><i class="pod"></i></span></figcaption>
+        </figure>
+      </section>
+
+      <div class="stack" aria-label="Technology stack">
+        <span class="stack-label mono">A considered stack</span>
+        <div class="stack-items"><span>Terraform</span><span>Docker</span><span>Azure ACR</span><span>Kubernetes</span><span>Azure Pipelines</span></div>
+      </div>
+
+      <section class="section" id="platform" aria-labelledby="platform-title">
+        <div class="section-top">
+          <div><p class="section-eyebrow eyebrow mono">Built into the foundation</p><h2 id="platform-title">Less overhead. More possibility.</h2></div>
+          <p class="section-summary">The essentials for a repeatable deployment, connected in one practical platform.</p>
+        </div>
+        <div class="features">
+          <article class="feature">
+            <div class="feature-top"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#icon-shield"/></svg></span><span class="feature-index mono">01 / CONTROL</span></div>
+            <h3>Make every release intentional.</h3>
+            <p>Versioned Terraform plans, identity-based access, and an approval step before production changes.</p>
+            <div class="feature-detail mono">Managed identities · Azure RBAC</div>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#icon-scale"/></svg></span><span class="feature-index mono">02 / CAPACITY</span></div>
+            <h3>Give your application room.</h3>
+            <p>Pod autoscaling and a dedicated application node pool adapt capacity to workload demand.</p>
+            <div class="feature-detail mono">3–10 pods · 2–5 application nodes</div>
+          </article>
+          <article class="feature">
+            <div class="feature-top"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#icon-pulse"/></svg></span><span class="feature-index mono">03 / VISIBILITY</span></div>
+            <h3>Keep the essentials in view.</h3>
+            <p>Readiness probes, liveness checks, and centralized container logs help you understand each rollout.</p>
+            <div class="feature-detail mono">Health probes · Log Analytics</div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section delivery" id="delivery" aria-labelledby="delivery-title">
+        <div class="section-top">
+          <div><p class="section-eyebrow eyebrow mono">Application delivery</p><h2 id="delivery-title">From commit to cloud.</h2></div>
+          <p class="section-summary">A small number of deliberate steps.<br>A repeatable path for every release.</p>
+        </div>
+        <ol class="delivery-steps">
+          <li><div class="step-line"><span class="step-number mono">01</span></div><h3>Commit your changes</h3><p>Application changes on main start the delivery pipeline.</p></li>
+          <li><div class="step-line"><span class="step-number mono">02</span></div><h3>Build, check, and publish</h3><p>Build the image, run HTTP checks, scan it, and push to ACR.</p></li>
+          <li><div class="step-line"><span class="step-number mono">03</span></div><h3>Approve the release</h3><p>Configured environment approvals control production deployment.</p></li>
+          <li><div class="step-line"><span class="step-number mono">04</span></div><h3>Roll out on AKS</h3><p>Update application pods and verify the deployment completes.</p></li>
+        </ol>
+      </section>
+
+      <section class="health-panel" id="health" data-state="idle" aria-labelledby="health-title">
+        <div class="health-top">
+          <div><p class="section-eyebrow eyebrow mono">Application health</p><h2 id="health-title">One endpoint. A clear signal.</h2></div>
+          <button class="button" type="button" data-health-check><span>Run health check</span><svg class="icon" aria-hidden="true"><use href="#icon-arrow"/></svg></button>
+        </div>
+        <dl class="health-data">
+          <div><dt>Endpoint</dt><dd class="mono"><a href="/health">/health ↗</a></dd></div>
+          <div><dt>Last result</dt><dd><span class="status-dot" aria-hidden="true"></span><span id="health-status">Not checked</span></dd></div>
+          <div><dt>Response time</dt><dd class="mono" id="health-latency">—</dd></div>
+        </dl>
+        <p class="health-message" id="health-message" role="status" aria-live="polite" aria-atomic="true">Run a check to see whether this application's NGINX health endpoint responds.</p>
+        <noscript><p class="health-message">JavaScript is disabled. Open <a href="/health">/health</a> to check the endpoint directly.</p></noscript>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span class="footer-name">aks.platform</span>
+      <span>Terraform + Docker + ACR + AKS</span>
+      <a href="#overview">Back to top <svg class="icon" aria-hidden="true"><use href="#icon-up-right"/></svg></a>
+    </footer>
+  </div>
+  <script>
+    (() => {
+      const buttons = [...document.querySelectorAll('[data-health-check]')];
+      const panel = document.getElementById('health');
+      const status = document.getElementById('health-status');
+      const latency = document.getElementById('health-latency');
+      const message = document.getElementById('health-message');
+      let checking = false;
+
+      async function checkHealth() {
+        if (checking) return;
+        checking = true;
+        buttons.forEach(button => { button.disabled = true; });
+        panel.dataset.state = 'checking';
+        panel.setAttribute('aria-busy', 'true');
+        status.textContent = 'Checking…';
+        latency.textContent = '—';
+        message.textContent = 'Contacting the application health endpoint…';
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        const started = performance.now();
+
+        try {
+          const response = await fetch('/health', { cache: 'no-store', signal: controller.signal, headers: { Accept: 'text/plain' } });
+          const body = await response.text();
+          const elapsed = Math.round(performance.now() - started);
+          latency.textContent = `${elapsed} ms`;
+          if (!response.ok || body.trim() !== 'healthy') {
+            panel.dataset.state = 'error';
+            status.textContent = 'Unexpected response';
+            message.textContent = response.status === 404
+              ? 'The health endpoint was not found. Serve this application through its NGINX container to enable /health.'
+              : `The endpoint returned HTTP ${response.status} without the expected health response.`;
+          } else {
+            panel.dataset.state = 'healthy';
+            status.textContent = 'Healthy';
+            message.textContent = `NGINX returned HTTP ${response.status}. Last checked at ${new Date().toLocaleTimeString()}.`;
+          }
+        } catch (error) {
+          panel.dataset.state = 'error';
+          status.textContent = error.name === 'AbortError' ? 'Timed out' : 'Unreachable';
+          message.textContent = error.name === 'AbortError'
+            ? 'The health endpoint did not respond within 8 seconds. Check the deployment and try again.'
+            : 'Unable to reach the health endpoint. Check your connection and try again.';
+        } finally {
+          clearTimeout(timeout);
+          panel.removeAttribute('aria-busy');
+          checking = false;
+          buttons.forEach(button => { button.disabled = false; });
+        }
+      }
+
+      buttons.forEach(button => button.addEventListener('click', () => {
+        panel.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+        checkHealth();
+      }));
+    })();
+  </script>
 </body>
 </html>
