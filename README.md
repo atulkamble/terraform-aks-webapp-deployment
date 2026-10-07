@@ -142,6 +142,12 @@ Copy [terraform/terraform.tfvars.example](terraform/terraform.tfvars.example) to
 2. Start with `docker run -d --name aks-webapp --read-only --tmpfs /tmp:uid=101,gid=101 -p 8080:8080 aks-webapp:v1`.
 3. Open `http://localhost:8080`; verify `curl --fail http://localhost:8080/health`.
 
+### Health endpoint
+
+NGINX serves `GET /health` on container port 8080 with HTTP `200`, content type `text/plain`, and body `healthy`. Responses use `Cache-Control: no-store`. The UI health check, Docker health check, and Kubernetes probes use this endpoint.
+
+After building and starting the container above, inspect the response with `curl -i http://localhost:8080/health`. Rebuild the image and recreate the container after changing NGINX configuration.
+
 ### Azure deployment
 
 1. Run `az login` and `az account set --subscription "<SUBSCRIPTION-ID>"`. Complete the input configuration above.
