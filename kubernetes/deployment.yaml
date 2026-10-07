@@ -39,7 +39,7 @@ spec:
       containers:
         - name: webapp
           # Replaced by scripts/deploy-app.sh and the application pipeline.
-          image: YOUR-ACR.azurecr.io/webapp:v1
+          image: atulkamble.azurecr.io/webapp:v1
           ports:
             - name: http
               containerPort: 8080
