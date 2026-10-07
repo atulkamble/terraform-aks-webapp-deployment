@@ -128,11 +128,28 @@ Run infrastructure provisioning before the first application deployment. The pip
 
 ## Prerequisites and configuration
 
-Install Azure CLI, Terraform, Docker, kubectl, kubelogin, Git, Bash, and curl. Start Docker. Your Azure subscription needs regional VM capacity and provisioning access.
+Install 
+- Azure CLI
+- Terraform
+- Docker
+- kubectl
+- kubelogin
+- Git
+- Bash
+- curl.
 
-Provisioning identities need Contributor and Role Based Access Control Administrator at the deployment scope. State users need Storage Blob Data Contributor. Image publishers need AcrPush or equivalent access.
+## Requirements
+1. Start Docker. Your Azure subscription needs regional VM capacity and provisioning access.
+2. Provisioning identities need Contributor and Role Based Access Control Administrator at the deployment scope.
+3. State users need Storage Blob Data Contributor.
+4. Image publishers need AcrPush or equivalent access.
 
-Copy [terraform/terraform.tfvars.example](terraform/terraform.tfvars.example) to `terraform/terraform.tfvars`. Set the subscription, region, resource names, globally unique ACR name, and `admin_principal_ids`. Use Entra **object IDs**, including your operator and application pipeline identity. Terraform grants those principals AKS access. Change `node_vm_size` if needed.
+## Guidelines 
+1. Copy [terraform/terraform.tfvars.example](terraform/terraform.tfvars.example) to `terraform/terraform.tfvars`.
+2. Set the subscription, region, resource names, globally unique ACR name, and `admin_principal_ids`.
+3. Use Entra **object IDs**, including your operator and application pipeline identity.
+4. Terraform grants those principals AKS access.
+5. Change `node_vm_size` if needed.
 
 ## Steps to run
 
