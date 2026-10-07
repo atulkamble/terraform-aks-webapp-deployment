@@ -138,6 +138,35 @@ Install
 - Bash
 - curl.
 
+```
+# Azure CLI
+az version
+
+# Terraform
+terraform version
+
+# Docker
+docker --version
+
+# Docker Compose
+docker compose version
+
+# kubectl
+kubectl version --client
+
+# kubelogin
+kubelogin --version
+
+# Git
+git --version
+
+# Bash
+bash --version
+
+# curl
+curl --version
+```
+
 ## Requirements
 1. Start Docker. Your Azure subscription needs regional VM capacity and provisioning access.
 2. Provisioning identities need Contributor and Role Based Access Control Administrator at the deployment scope.
