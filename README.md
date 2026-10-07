@@ -282,6 +282,31 @@ Keep the Terraform lock file committed. Local settings, state, and plans are ign
 
 ## Azure Pipelines setup
 
+## for Kubernetes integration
+```
+Project Settings → 
+Service connections → 
+New service connection → 
+Azure Resource Manager
+Azure Subscription: 
+aks-connection
+Grant access permission to all pipelines
+
+Pipelines
+New Pipeline
+Github
+Select Repo 
+Deploy to Azure Kubernetes Service
+Visual Studio Enterprise Subscription
+cluster - aks-production
+namespace  → new  → production
+container registry  → atulkamble
+image name   → atulkambleterraformakswebappdeployment
+port   → 8080
+Enable Review App flow for Pull Requests
+Validate and Configure
+```
+
 1. Create a workload identity federation service connection named `azure-production-connection`. Assign provisioning, state, image-publishing, and AKS access as described above.
 2. Install the Microsoft DevLabs Terraform extension. Create and authorize the `aks-production` variable group.
 3. Set `location`, `resourceGroup`, `aksCluster`, `acrName`, `adminPrincipalIds` (JSON array of object IDs), `tfstateResourceGroup`, `tfstateStorageAccount`, `tfstateContainer`, and `tfstateKey`. Match local settings; defaults for the container/key are `tfstate` / `production.aks.tfstate`. Add `vnetName` and `nodeVmSize` if customized.
