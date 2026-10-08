@@ -1,15 +1,16 @@
 trigger:
-  - main 
+  - main
 
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  serviceConnection: 'AzureServiceConnection'  
+  kubernetesServiceConnection: 'AzureServiceConnection'
 
-steps: 
-  - task: Apply manifests@1
+steps:
+  - task: KubernetesManifest@1
+    displayName: 'Apply Kubernetes manifests'
     inputs:
-      action: 'Apply'
+      action: 'deploy'
       manifests: '$(System.DefaultWorkingDirectory)/kubernetes/*.yaml'
-      kubernetesServiceConnection: '$(serviceConnection)'
+      kubernetesServiceConnection: '$(kubernetesServiceConnection)'
