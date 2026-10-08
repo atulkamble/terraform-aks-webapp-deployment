@@ -1,3 +1,4 @@
+```yaml
 trigger:
   - main
 
@@ -11,6 +12,9 @@ variables:
 
 steps:
 
+# ============================================================
+# Connect to AKS
+# ============================================================
 - task: AzureCLI@2
   displayName: 'Connect to AKS'
   inputs:
@@ -21,7 +25,9 @@ steps:
 
       set -e
 
-      echo "Installing kubectl and kubelogin..."
+      echo "========================================="
+      echo "Installing kubectl and kubelogin"
+      echo "========================================="
 
       az aks install-cli
 
@@ -31,28 +37,81 @@ steps:
       echo "kubelogin version:"
       kubelogin --version
 
-      echo "Getting AKS credentials..."
+      echo "========================================="
+      echo "Getting AKS credentials"
+      echo "========================================="
 
       az aks get-credentials \
         --resource-group "$(resourceGroup)" \
         --name "$(aksClusterName)" \
         --overwrite-existing
 
-      echo "Converting kubeconfig for Azure CLI authentication..."
+      echo "========================================="
+      echo "Converting kubeconfig for Azure CLI authentication"
+      echo "========================================="
 
       kubelogin convert-kubeconfig -l azurecli
 
-      echo "Current Kubernetes context:"
+      echo "========================================="
+      echo "Current Kubernetes context"
+      echo "========================================="
 
       kubectl config current-context
 
-      echo "Testing AKS connection..."
+      echo "========================================="
+      echo "Testing AKS connection"
+      echo "========================================="
 
       kubectl get nodes
 
-- task: KubernetesManifest@1
+
+# ============================================================
+# Deploy Kubernetes manifests
+# ============================================================
+- task: AzureCLI@2
   displayName: 'Deploy Kubernetes manifests'
   inputs:
-    action: 'deploy'
-    manifests: |
-      $(System.DefaultWorkingDirectory)/kubernetes/*.yaml 
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+
+      set -e
+
+      echo "========================================="
+      echo "Checking Kubernetes manifests"
+      echo "========================================="
+
+      ls -la "$(System.DefaultWorkingDirectory)/kubernetes"
+
+      echo "========================================="
+      echo "Applying Kubernetes manifests"
+      echo "========================================="
+
+      kubectl apply \
+        -f "$(System.DefaultWorkingDirectory)/kubernetes/"
+
+      echo "========================================="
+      echo "Kubernetes resources"
+      echo "========================================="
+
+      kubectl get all -n production
+
+      echo "========================================="
+      echo "Deployments"
+      echo "========================================="
+
+      kubectl get deployments -n production
+
+      echo "========================================="
+      echo "Pods"
+      echo "========================================="
+
+      kubectl get pods -n production
+
+      echo "========================================="
+      echo "Services"
+      echo "========================================="
+
+      kubectl get services -n production
+```
