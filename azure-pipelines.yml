@@ -13,4 +13,4 @@ steps:
     inputs:
       action: 'deploy'
       manifests: '$(System.DefaultWorkingDirectory)/kubernetes/*.yaml'
-      kubernetesServiceConnection: '$(kubernetesServiceConnection)'
+      kubernetesServiceConnection: '$(kubernetesServiceConnection)'  
