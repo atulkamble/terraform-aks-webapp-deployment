@@ -205,8 +205,8 @@ chmod +x scripts/bootstrap-state.sh
 ./scripts/bootstrap-state.sh
 ```
 3. It generates `terraform/backend.hcl`; for existing state storage, copy and edit [terraform/backend.hcl.example](terraform/backend.hcl.example) instead. Grant state access to the pipeline identity separately.
-4. Run `terraform -chdir=terraform fmt -check -recursive`, then `terraform -chdir=terraform init -backend-config=backend.hcl` and `terraform -chdir=terraform validate`.
-5. Run `terraform -chdir=terraform plan -out=tfplan`, review the plan, then run `terraform -chdir=terraform apply tfplan`.
+4. Run `terraform -chdir=terraform fmt -check -recursive`, then `terraform -chdir=terraform init -backend-config=backend.hcl` and `terraform -chdir=terraform validate`
+5. Run `terraform -chdir=terraform plan -out=tfplan`, review the plan, then run `terraform -chdir=terraform apply tfplan`
 Example:
 ```
 az ad signed-in-user show \
