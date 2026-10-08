@@ -39,7 +39,7 @@ spec:
       containers:
         - name: webapp
           # Replaced by scripts/deploy-app.sh and the application pipeline.
-          image: atulkamble.azurecr.io/webapp:v1
+          image: vishalgharat.azurecr.io/webapp:v2
           ports:
             - name: http
               containerPort: 8080
