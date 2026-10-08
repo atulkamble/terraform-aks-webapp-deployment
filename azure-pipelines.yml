@@ -1,15 +1,105 @@
 trigger:
-  - main 
+  - main
 
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  serviceConnection: 'AzureServiceConnection'  
+  azureServiceConnection: 'AzureServiceConnection'
+  resourceGroup: 'rg-aks-production'
+  aksClusterName: 'aks-production'
 
-steps: 
-  - task: Apply manifests@1
-    inputs:
-      action: 'Apply'
-      manifests: '$(System.DefaultWorkingDirectory)/kubernetes/*.yaml'
-      kubernetesServiceConnection: '$(serviceConnection)'
+steps:
+
+# ============================================================
+# 1. Connect to AKS
+# ============================================================
+- task: AzureCLI@2
+  displayName: 'Connect to AKS'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+
+      set -e
+
+      echo "Installing kubectl and kubelogin..."
+
+      az aks install-cli
+
+      echo "kubectl version:"
+      kubectl version --client
+
+      echo "kubelogin version:"
+      kubelogin --version
+
+      echo "Getting AKS credentials..."
+
+      az aks get-credentials \
+        --resource-group "$(resourceGroup)" \
+        --name "$(aksClusterName)" \
+        --overwrite-existing
+
+      echo "Converting kubeconfig..."
+
+      kubelogin convert-kubeconfig -l azurecli
+
+      echo "Current Kubernetes context:"
+
+      kubectl config current-context
+
+      echo "Testing AKS connection..."
+
+      kubectl get nodes
+
+
+# ============================================================
+# 2. Deploy Kubernetes manifests
+# ============================================================
+- task: AzureCLI@2
+  displayName: 'Deploy Kubernetes manifests'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+
+      set -e
+
+      echo "========================================="
+      echo "Kubernetes manifest files"
+      echo "========================================="
+
+      ls -la "$(System.DefaultWorkingDirectory)/kubernetes"
+
+      echo "========================================="
+      echo "Applying Kubernetes manifests"
+      echo "========================================="
+
+      kubectl apply \
+        -f "$(System.DefaultWorkingDirectory)/kubernetes/"
+
+      echo "========================================="
+      echo "Kubernetes resources"
+      echo "========================================="
+
+      kubectl get all -n production
+
+      echo "========================================="
+      echo "Deployments"
+      echo "========================================="
+
+      kubectl get deployments -n production
+
+      echo "========================================="
+      echo "Pods"
+      echo "========================================="
+
+      kubectl get pods -n production
+
+      echo "========================================="
+      echo "Services"
+      echo "========================================="
+
+      kubectl get services -n production
