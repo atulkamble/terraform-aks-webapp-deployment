@@ -197,9 +197,16 @@ After building and starting the container above, inspect the response with `curl
 ### Azure deployment
 
 1. Run `az login` and `az account set --subscription "<SUBSCRIPTION-ID>"`. Complete the input configuration above.
-2. Run `TFSTATE_STORAGE_ACCOUNT=<unique-lowercase-name> bash scripts/bootstrap-state.sh`. It generates `terraform/backend.hcl`; for existing state storage, copy and edit [terraform/backend.hcl.example](terraform/backend.hcl.example) instead. Grant state access to the pipeline identity separately.
-3. Run `terraform -chdir=terraform fmt -check -recursive`, then `terraform -chdir=terraform init -backend-config=backend.hcl` and `terraform -chdir=terraform validate`.
-4. Run `terraform -chdir=terraform plan -out=tfplan`, review the plan, then run `terraform -chdir=terraform apply tfplan`.
+2. Run `TFSTATE_STORAGE_ACCOUNT=<unique-lowercase-name> bash scripts/bootstrap-state.sh`.
+example:
+```
+export TFSTATE_STORAGE_ACCOUNT=atul9860057575
+chmod +x scripts/bootstrap-state.sh
+./scripts/bootstrap-state.sh
+```
+3. It generates `terraform/backend.hcl`; for existing state storage, copy and edit [terraform/backend.hcl.example](terraform/backend.hcl.example) instead. Grant state access to the pipeline identity separately.
+4. Run `terraform -chdir=terraform fmt -check -recursive`, then `terraform -chdir=terraform init -backend-config=backend.hcl` and `terraform -chdir=terraform validate`.
+5. Run `terraform -chdir=terraform plan -out=tfplan`, review the plan, then run `terraform -chdir=terraform apply tfplan`.
 Example:
 ```
 az ad signed-in-user show \
