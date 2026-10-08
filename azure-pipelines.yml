@@ -18,7 +18,18 @@ steps:
     scriptType: bash
     scriptLocation: inlineScript
     inlineScript: |
+
       set -e
+
+      echo "Installing kubectl and kubelogin..."
+
+      az aks install-cli
+
+      echo "kubectl version:"
+      kubectl version --client
+
+      echo "kubelogin version:"
+      kubelogin --version
 
       echo "Getting AKS credentials..."
 
@@ -31,15 +42,17 @@ steps:
 
       kubelogin convert-kubeconfig -l azurecli
 
-      echo "Current context:"
+      echo "Current Kubernetes context:"
+
       kubectl config current-context
 
-      echo "Testing AKS:"
+      echo "Testing AKS connection..."
+
       kubectl get nodes
 
 - task: KubernetesManifest@1
   displayName: 'Deploy Kubernetes manifests'
   inputs:
-    action: deploy
+    action: 'deploy'
     manifests: |
       $(System.DefaultWorkingDirectory)/kubernetes/*.yaml
