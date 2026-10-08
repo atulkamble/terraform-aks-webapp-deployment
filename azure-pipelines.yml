@@ -55,4 +55,4 @@ steps:
   inputs:
     action: 'deploy'
     manifests: |
-      $(System.DefaultWorkingDirectory)/kubernetes/*.yaml
+      $(System.DefaultWorkingDirectory)/kubernetes/*.yaml 
