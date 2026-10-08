@@ -294,7 +294,7 @@ Keep the Terraform lock file committed. Local settings, state, and plans are ign
 Project Settings → 
 Service connections → 
 New service connection → 
-Azure Resource Manager
+Kubernetes
 Azure Subscription: 
 aks-connection
 Grant access permission to all pipelines
