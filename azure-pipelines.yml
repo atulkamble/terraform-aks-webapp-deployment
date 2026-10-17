@@ -5,10 +5,9 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  azureServiceConnection: 'AzureServiceConnection'
+  azureServiceConnection: 'project'
   resourceGroup: 'rg-aks-production'
   aksClusterName: 'aks-production'
-
 steps:
 
 # ============================================================
