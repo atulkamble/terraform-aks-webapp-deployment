@@ -14,7 +14,7 @@ steps:
 # 1. Connect to AKS
 # ============================================================
 - task: AzureCLI@2
-  displayName: 'Connect to AKS'
+  displayName: 'Connect to production AKS'
   inputs:
     azureSubscription: '$(azureServiceConnection)'
     scriptType: bash
