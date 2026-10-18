@@ -14,7 +14,7 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  azureServiceConnection: 'AzureWebAppPython'
+  azureServiceConnection: 'project'
   resourceGroup: 'rg-aks-production'
   aksCluster: 'aks-production'
   acrName: 'atulkamble'
