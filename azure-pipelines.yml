@@ -1,3 +1,9 @@
+
+# ==========================================================
+# Azure DevOps CI/CD Pipeline
+# GitHub -> Docker -> Test -> Trivy -> ACR -> AKS
+# ==========================================================
+
 trigger:
   branches:
     include:
@@ -13,133 +19,381 @@ pr: none
 pool:
   vmImage: ubuntu-latest
 
+# ==========================================================
+# VARIABLES
+# ==========================================================
+
 variables:
-  azureServiceConnection: project
-  resourceGroup: rg-aks-production
-  aksClusterName: aks-production
-  acrName: atulkamble
-  imageRepository: webapp
+  azureServiceConnection: 'project'
+  resourceGroup: 'rg-aks-production'
+  aksClusterName: 'aks-production'
+  acrName: 'atulkamble'
+  imageRepository: 'webapp'
   imageTag: '$(Build.BuildId)'
+  namespace: 'production'
 
 stages:
-  - stage: Build
-    displayName: Build, check, and push image
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
-    jobs:
-      - job: BuildImage
-        steps:
-          - checkout: self
+
+# ==========================================================
+# STAGE 1 - BUILD, TEST, SCAN, PUSH
+# ==========================================================
+
+- stage: Build
+  displayName: 'Build, Test, Scan and Push'
+
+  jobs:
+  - job: BuildImage
+    displayName: 'Build Docker Image'
+
+    steps:
+
+    - checkout: self
+
+    - task: AzureCLI@2
+      displayName: 'Build, Test, Scan and Push to ACR'
+
+      inputs:
+        azureSubscription: '$(azureServiceConnection)'
+        scriptType: bash
+        scriptLocation: inlineScript
+        workingDirectory: '$(Build.SourcesDirectory)'
+
+        inlineScript: |
+          set -euo pipefail
+
+          echo "=================================="
+          echo "1. Azure Authentication"
+          echo "=================================="
+
+          az account show --output table
+
+          ACR_SERVER=$(az acr show \
+            --name "$ACR_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query loginServer \
+            --output tsv)
+
+          IMAGE="$ACR_SERVER/$IMAGE_REPOSITORY:$IMAGE_TAG"
+
+          echo "Image: $IMAGE"
+
+          echo "=================================="
+          echo "2. Build Docker Image"
+          echo "=================================="
+
+          docker build \
+            --pull \
+            --platform linux/amd64 \
+            --tag "$IMAGE" \
+            ./app
+
+          echo "=================================="
+          echo "3. Validate Nginx Configuration"
+          echo "=================================="
+
+          docker run --rm \
+            "$IMAGE" nginx -t
+
+          echo "=================================="
+          echo "4. Start Test Container"
+          echo "=================================="
+
+          CONTAINER="webapp-test-$IMAGE_TAG"
+
+          cleanup() {
+            docker rm -f "$CONTAINER" \
+              >/dev/null 2>&1 || true
+          }
+
+          trap cleanup EXIT
+
+          docker run -d \
+            --name "$CONTAINER" \
+            -p 127.0.0.1:18080:8080 \
+            "$IMAGE"
+
+          docker ps -a
+
+          echo "=================================="
+          echo "5. Application Health Check"
+          echo "=================================="
+
+          HEALTHY=false
+
+          for i in $(seq 1 20); do
+
+            if curl \
+              --fail \
+              --silent \
+              --show-error \
+              --max-time 5 \
+              http://127.0.0.1:18080/health; then
+
+              echo "Health check passed"
+              HEALTHY=true
+              break
+
+            fi
+
+            echo "Waiting for application ($i/20)"
+            sleep 3
+
+          done
+
+          if [ "$HEALTHY" != "true" ]; then
+
+            echo "Health check failed"
+            docker logs "$CONTAINER"
+            docker inspect "$CONTAINER" \
+              --format '{{.State.Status}} {{.State.ExitCode}}'
+
+            exit 1
+          fi
+
+          echo "=================================="
+          echo "6. Test Homepage"
+          echo "=================================="
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --max-time 10 \
+            http://127.0.0.1:18080/ \
+            > /dev/null
+
+          echo "Homepage test passed"
+
+          cleanup
+          trap - EXIT
+
+          echo "=================================="
+          echo "7. Trivy Security Scan"
+          echo "=================================="
+
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest \
+            image \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            "$IMAGE"
+
+          echo "=================================="
+          echo "8. Login to Azure Container Registry"
+          echo "=================================="
+
+          az acr login --name "$ACR_NAME"
+
+          echo "=================================="
+          echo "9. Push Image to ACR"
+          echo "=================================="
+
+          docker push "$IMAGE"
+
+          echo "=================================="
+          echo "10. Prepare Deployment Artifact"
+          echo "=================================="
+
+          mkdir -p "$ARTIFACT_DIR"
+
+          cp kubernetes/*.yaml "$ARTIFACT_DIR/"
+
+          printf '%s\n' "$IMAGE" \
+            > "$ARTIFACT_DIR/image.txt"
+
+          echo "Build stage completed successfully"
+
+      env:
+        ACR_NAME: $(acrName)
+        RESOURCE_GROUP: $(resourceGroup)
+        IMAGE_REPOSITORY: $(imageRepository)
+        IMAGE_TAG: $(imageTag)
+        ARTIFACT_DIR: $(Build.ArtifactStagingDirectory)/release
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Deployment Artifacts'
+
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)/release'
+        artifact: release
+        publishLocation: pipeline
+
+# ==========================================================
+# STAGE 2 - DEPLOY TO AKS
+# ==========================================================
+
+- stage: Deploy
+  displayName: 'Deploy Application to AKS'
+
+  dependsOn: Build
+
+  condition: >
+    and(
+      succeeded(),
+      eq(variables['Build.SourceBranch'], 'refs/heads/main')
+    )
+
+  jobs:
+
+  - deployment: DeployWebapp
+    displayName: 'Deploy Web Application'
+    environment: production
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - download: current
+            artifact: release
 
           - task: AzureCLI@2
-            displayName: Build, test, scan, and push to ACR
+            displayName: 'Deploy and Verify AKS'
+
             inputs:
               azureSubscription: '$(azureServiceConnection)'
               scriptType: bash
               scriptLocation: inlineScript
-              workingDirectory: '$(Build.SourcesDirectory)'
+
               inlineScript: |
                 set -euo pipefail
 
-                acr_server="$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query loginServer --output tsv)"
-                : "${acr_server:?ACR login server was not returned.}"
-                image="$acr_server/$IMAGE_REPOSITORY:$IMAGE_TAG"
-                docker build --pull --platform linux/amd64 --tag "$image" ./app
+                echo "=================================="
+                echo "1. Azure Authentication"
+                echo "=================================="
 
-                container_name="webapp-check-$IMAGE_TAG"
-                trap 'docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
-                docker run -d --name "$container_name" \
-                  --read-only --tmpfs /tmp:uid=101,gid=101 \
-                  -p 127.0.0.1::8080 "$image"
-                port="$(docker port "$container_name" 8080/tcp)"
-                port="${port##*:}"
-                curl --fail --silent --show-error --max-time 5 \
-                  --retry 15 --retry-delay 2 --retry-connrefused \
-                  "http://127.0.0.1:$port/health"
-                curl --fail --silent --show-error --max-time 5 \
-                  "http://127.0.0.1:$port/" > /dev/null
-                docker rm -f "$container_name"
-                trap - EXIT
+                az account show --output table
 
-                docker run --rm \
-                  -v /var/run/docker.sock:/var/run/docker.sock \
-                  aquasec/trivy:latest image --scanners vuln \
-                  --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$image"
+                echo "=================================="
+                echo "2. Install kubectl and kubelogin"
+                echo "=================================="
 
-                az acr login --name "$ACR_NAME"
-                docker push "$image"
+                TOOLS_DIR="$AGENT_TEMPDIRECTORY/aks-tools"
+                mkdir -p "$TOOLS_DIR"
 
-                # Carry the exact image and manifests into the deployment stage.
-                mkdir -p "$ARTIFACT_DIR"
-                cp kubernetes/*.yaml "$ARTIFACT_DIR/"
-                printf '%s\n' "$image" > "$ARTIFACT_DIR/image.txt"
+                AKS_VERSION=$(az aks show \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --name "$AKS_CLUSTER_NAME" \
+                  --query kubernetesVersion \
+                  --output tsv)
+
+                az aks install-cli \
+                  --client-version "$AKS_VERSION" \
+                  --install-location "$TOOLS_DIR/kubectl" \
+                  --kubelogin-install-location "$TOOLS_DIR/kubelogin"
+
+                export PATH="$TOOLS_DIR:$PATH"
+
+                kubectl version --client
+                kubelogin --version
+
+                echo "=================================="
+                echo "3. Connect to AKS"
+                echo "=================================="
+
+                az aks get-credentials \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --name "$AKS_CLUSTER_NAME" \
+                  --file "$KUBECONFIG" \
+                  --overwrite-existing
+
+                kubelogin convert-kubeconfig \
+                  -l azurecli
+
+                echo "=================================="
+                echo "4. Verify AKS Connection"
+                echo "=================================="
+
+                kubectl get nodes
+
+                echo "=================================="
+                echo "5. Read Image Reference"
+                echo "=================================="
+
+                IMAGE=$(cat "$RELEASE_DIR/image.txt")
+
+                echo "Deploying image: $IMAGE"
+
+                echo "=================================="
+                echo "6. Create Namespace"
+                echo "=================================="
+
+                kubectl apply \
+                  -f "$RELEASE_DIR/namespace.yaml"
+
+                echo "=================================="
+                echo "7. Deploy Application"
+                echo "=================================="
+
+                kubectl set image --local \
+                  -f "$RELEASE_DIR/deployment.yaml" \
+                  "webapp=$IMAGE" \
+                  -o yaml | kubectl apply -f -
+
+                echo "=================================="
+                echo "8. Deploy Service"
+                echo "=================================="
+
+                kubectl apply \
+                  -f "$RELEASE_DIR/service.yaml"
+
+                echo "=================================="
+                echo "9. Deploy HPA"
+                echo "=================================="
+
+                kubectl apply \
+                  -f "$RELEASE_DIR/hpa.yaml"
+
+                echo "=================================="
+                echo "10. Verify Deployment Rollout"
+                echo "=================================="
+
+                if ! kubectl rollout status \
+                  deployment/webapp \
+                  -n "$NAMESPACE" \
+                  --timeout=300s; then
+
+                  echo "Deployment failed"
+
+                  kubectl get pods \
+                    -n "$NAMESPACE" -o wide || true
+
+                  kubectl describe deployment webapp \
+                    -n "$NAMESPACE" || true
+
+                  kubectl get events \
+                    -n "$NAMESPACE" \
+                    --sort-by=.lastTimestamp || true
+
+                  exit 1
+                fi
+
+                echo "=================================="
+                echo "11. Final Verification"
+                echo "=================================="
+
+                kubectl get deployments \
+                  -n "$NAMESPACE"
+
+                kubectl get pods \
+                  -n "$NAMESPACE" -o wide
+
+                kubectl get svc \
+                  -n "$NAMESPACE"
+
+                kubectl get hpa \
+                  -n "$NAMESPACE"
+
+                echo "=================================="
+                echo "AKS Deployment Completed"
+                echo "=================================="
+
             env:
-              ACR_NAME: $(acrName)
               RESOURCE_GROUP: $(resourceGroup)
-              IMAGE_REPOSITORY: $(imageRepository)
-              IMAGE_TAG: $(imageTag)
-              ARTIFACT_DIR: $(Build.ArtifactStagingDirectory)/release
-
-          - task: PublishPipelineArtifact@1
-            displayName: Publish deployment manifests and image reference
-            inputs:
-              targetPath: '$(Build.ArtifactStagingDirectory)/release'
-              artifact: release
-
-  - stage: Deploy
-    displayName: Deploy to production AKS
-    dependsOn: Build
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
-    jobs:
-      - deployment: DeployWebapp
-        displayName: Deploy webapp
-        environment: production
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - download: current
-                  artifact: release
-
-                - task: AzureCLI@2
-                  displayName: Apply release and verify rollout
-                  inputs:
-                    azureSubscription: '$(azureServiceConnection)'
-                    scriptType: bash
-                    scriptLocation: inlineScript
-                    inlineScript: |
-                      set -euo pipefail
-
-                      tools_dir="$AGENT_TEMPDIRECTORY/aks-tools"
-                      mkdir -p "$tools_dir"
-                      aks_version="$(az aks show --resource-group "$RESOURCE_GROUP" --name "$AKS_CLUSTER_NAME" --query kubernetesVersion --output tsv)"
-                      : "${aks_version:?AKS Kubernetes version was not returned.}"
-                      az aks install-cli \
-                        --client-version "$aks_version" \
-                        --install-location "$tools_dir/kubectl" \
-                        --kubelogin-install-location "$tools_dir/kubelogin"
-                      export PATH="$tools_dir:$PATH"
-
-                      az aks get-credentials \
-                        --resource-group "$RESOURCE_GROUP" \
-                        --name "$AKS_CLUSTER_NAME" \
-                        --file "$KUBECONFIG" --overwrite-existing
-                      # Keep kubelogin and kubectl in the authenticated AzureCLI task.
-                      kubelogin convert-kubeconfig -l azurecli
-
-                      image="$(cat "$RELEASE_DIR/image.txt")"
-                      : "${image:?Release artifact has no image reference.}"
-                      kubectl apply -f "$RELEASE_DIR/namespace.yaml"
-                      kubectl set image --local -f "$RELEASE_DIR/deployment.yaml" \
-                        "webapp=$image" -o yaml | kubectl apply -f -
-                      kubectl apply -f "$RELEASE_DIR/service.yaml" -f "$RELEASE_DIR/hpa.yaml"
-                      if ! kubectl rollout status deployment/webapp -n production --timeout=300s; then
-                        kubectl get pods -n production -o wide || true
-                        kubectl describe deployment webapp -n production || true
-                        exit 1
-                      fi
-                      kubectl get pods,svc,hpa -n production
-                  env:
-                    RESOURCE_GROUP: $(resourceGroup)
-                    AKS_CLUSTER_NAME: $(aksClusterName)
-                    RELEASE_DIR: $(Pipeline.Workspace)/release
-                    KUBECONFIG: $(Agent.TempDirectory)/webapp-kubeconfig
+              AKS_CLUSTER_NAME: $(aksClusterName)
+              NAMESPACE: $(namespace)
+              RELEASE_DIR: $(Pipeline.Workspace)/release
+              KUBECONFIG: $(Agent.TempDirectory)/webapp-kubeconfig
