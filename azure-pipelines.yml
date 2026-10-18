@@ -4,8 +4,8 @@ trigger:
       - main
   paths:
     include:
-      - app/*
-      - kubernetes/*
+      - app/**
+      - kubernetes/**
       - pipelines/application.yml
 
 pr: none
@@ -26,16 +26,15 @@ variables:
 stages:
 
 # ==========================================
-# STAGE 1: BUILD, TEST, SCAN AND PUSH
+# STAGE 1: BUILD, TEST, SCAN, PUSH
 # ==========================================
 
 - stage: Build
   displayName: 'Build, Test, Scan and Push'
   jobs:
   - job: BuildJob
-    displayName: 'Build Docker Image'
+    displayName: 'Docker Build and Push'
     steps:
-
     - checkout: self
 
     - task: AzureCLI@2
@@ -49,88 +48,64 @@ stages:
 
           IMAGE="$(acrLoginServer)/$(imageRepository):$(imageTag)"
 
-          echo "=================================="
-          echo "1. Azure Authentication"
-          echo "=================================="
+          echo "1. Verify Azure Authentication"
           az account show --output table
 
-          echo "Image: $IMAGE"
-
-          echo "=================================="
           echo "2. Build Docker Image"
-          echo "=================================="
+          docker build -t "$IMAGE" ./app
 
-          docker build \
-            -t "$IMAGE" \
-            ./app
-
-          echo "=================================="
           echo "3. Validate Nginx Configuration"
-          echo "=================================="
 
+          # FIX: Avoid passing nginx twice
           docker run --rm \
-            --entrypoint nginx \
+            --entrypoint /usr/sbin/nginx \
             "$IMAGE" \
             -t
 
-          echo "=================================="
           echo "4. Test Application"
-          echo "=================================="
 
           docker run -d \
-            --name webapp-test \
-            -p 8080:8080 \
+            --name "webapp-test-$(Build.BuildId)" \
+            -p 127.0.0.1:8080:8080 \
             "$IMAGE"
 
-          trap 'docker rm -f webapp-test >/dev/null 2>&1 || true' EXIT
+          trap 'docker rm -f "webapp-test-$(Build.BuildId)" >/dev/null 2>&1 || true' EXIT
 
           HEALTH_OK=0
-
           for i in {1..15}; do
             if curl --fail --silent \
-              http://localhost:8080/health; then
+              http://127.0.0.1:8080/health; then
               HEALTH_OK=1
               break
             fi
-
             sleep 2
           done
 
           if [ "$HEALTH_OK" -ne 1 ]; then
-            echo "Health check failed"
-            docker logs webapp-test
+            docker logs "webapp-test-$(Build.BuildId)"
             exit 1
           fi
 
-          echo "Application health check passed"
+          echo "Health check passed"
 
-          echo "=================================="
           echo "5. Scan Docker Image"
-          echo "=================================="
 
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:latest \
             image \
+            --image-src docker \
             --exit-code 1 \
             --severity HIGH,CRITICAL \
             "$IMAGE"
 
-          echo "=================================="
-          echo "6. Login to ACR"
-          echo "=================================="
+          echo "6. Login to Azure Container Registry"
+          az acr login --name "$(acrName)"
 
-          az acr login \
-            --name "$(acrName)"
-
-          echo "=================================="
-          echo "7. Push Image to ACR"
-          echo "=================================="
-
+          echo "7. Push Docker Image"
           docker push "$IMAGE"
 
-          echo "Image pushed successfully: $IMAGE"
-
+          echo "Successfully pushed: $IMAGE"
 
 # ==========================================
 # STAGE 2: DEPLOY TO AKS
@@ -140,16 +115,14 @@ stages:
   displayName: 'Deploy to AKS'
   dependsOn: Build
   condition: succeeded()
-
   jobs:
   - job: DeployJob
-    displayName: 'Deploy Application'
+    displayName: 'AKS Deployment'
     steps:
-
     - checkout: self
 
     - task: AzureCLI@2
-      displayName: 'Deploy Docker Image to AKS'
+      displayName: 'Deploy Application to AKS'
       inputs:
         azureSubscription: '$(azureServiceConnection)'
         scriptType: 'bash'
@@ -159,43 +132,51 @@ stages:
 
           IMAGE="$(acrLoginServer)/$(imageRepository):$(imageTag)"
 
-          echo "=================================="
           echo "1. Install kubectl and kubelogin"
-          echo "=================================="
-
           az aks install-cli
 
-          echo "=================================="
-          echo "2. Connect to AKS"
-          echo "=================================="
-
+          echo "2. Connect to AKS using Entra ID"
           az aks get-credentials \
             --resource-group "$(resourceGroup)" \
             --name "$(aksCluster)" \
             --overwrite-existing
 
-          kubelogin convert-kubeconfig \
-            -l azurecli
+          kubelogin convert-kubeconfig -l azurecli
 
-          echo "=================================="
           echo "3. Verify Cluster"
-          echo "=================================="
-
           kubectl get nodes
 
-          echo "=================================="
           echo "4. Create Namespace"
-          echo "=================================="
-
           kubectl create namespace "$(namespace)" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          echo "=================================="
-          echo "5. Deploy Kubernetes Resources"
-          echo "=================================="
+          echo "5. Prepare Image Deployment"
+          cp kubernetes/deployment.yaml /tmp/webapp-deployment.yaml
 
+          # Update container image in manifest before apply
+          export IMAGE
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("/tmp/webapp-deployment.yaml")
+          content = path.read_text()
+          import re
+          content, count = re.subn(
+              r"(^\s*image:\s*)\S+",
+              lambda m: m.group(1) + os.environ["IMAGE"],
+              content,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if count != 1:
+              raise SystemExit("Deployment image field not found")
+          path.write_text(content)
+          PY
+
+          echo "6. Deploy Kubernetes Resources"
           kubectl apply \
-            -f kubernetes/deployment.yaml \
+            -f /tmp/webapp-deployment.yaml \
             -n "$(namespace)"
 
           kubectl apply \
@@ -208,31 +189,16 @@ stages:
               -n "$(namespace)"
           fi
 
-          echo "=================================="
-          echo "6. Update Container Image"
-          echo "=================================="
-
-          kubectl set image \
-            deployment/webapp \
-            webapp="$IMAGE" \
-            -n "$(namespace)"
-
-          echo "=================================="
           echo "7. Verify Rollout"
-          echo "=================================="
-
           kubectl rollout status \
             deployment/webapp \
             -n "$(namespace)" \
             --timeout=300s
 
-          echo "=================================="
           echo "8. Verify Resources"
-          echo "=================================="
-
           kubectl get deployments -n "$(namespace)"
           kubectl get pods -n "$(namespace)"
           kubectl get svc -n "$(namespace)"
-          kubectl get hpa -n "$(namespace)"
+          kubectl get hpa -n "$(namespace)" || true
 
           echo "Deployment completed successfully"
