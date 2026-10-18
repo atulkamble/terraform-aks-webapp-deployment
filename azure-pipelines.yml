@@ -1,104 +1,145 @@
 trigger:
-  - main
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - app/**
+      - kubernetes/**
+      - azure-pipelines.yml
+
+pr: none
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: ubuntu-latest
 
 variables:
-  azureServiceConnection: 'project'
-  resourceGroup: 'rg-aks-production'
-  aksClusterName: 'aks-production'
-steps:
+  azureServiceConnection: project
+  resourceGroup: rg-aks-production
+  aksClusterName: aks-production
+  acrName: atulkamble
+  imageRepository: webapp
+  imageTag: '$(Build.BuildId)'
 
-# ============================================================
-# 1. Connect to AKS
-# ============================================================
-- task: AzureCLI@2
-  displayName: 'Connect to production AKS'
-  inputs:
-    azureSubscription: '$(azureServiceConnection)'
-    scriptType: bash
-    scriptLocation: inlineScript
-    inlineScript: |
+stages:
+  - stage: Build
+    displayName: Build, check, and push image
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: BuildImage
+        steps:
+          - checkout: self
 
-      set -e
+          - task: AzureCLI@2
+            displayName: Build, test, scan, and push to ACR
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              workingDirectory: '$(Build.SourcesDirectory)'
+              inlineScript: |
+                set -euo pipefail
 
-      echo "Installing kubectl and kubelogin..."
+                acr_server="$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query loginServer --output tsv)"
+                : "${acr_server:?ACR login server was not returned.}"
+                image="$acr_server/$IMAGE_REPOSITORY:$IMAGE_TAG"
+                docker build --pull --platform linux/amd64 --tag "$image" ./app
 
-      az aks install-cli
+                container_name="webapp-check-$IMAGE_TAG"
+                trap 'docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
+                docker run -d --name "$container_name" \
+                  --read-only --tmpfs /tmp:uid=101,gid=101 \
+                  -p 127.0.0.1::8080 "$image"
+                port="$(docker port "$container_name" 8080/tcp)"
+                port="${port##*:}"
+                curl --fail --silent --show-error --max-time 5 \
+                  --retry 15 --retry-delay 2 --retry-connrefused \
+                  "http://127.0.0.1:$port/health"
+                curl --fail --silent --show-error --max-time 5 \
+                  "http://127.0.0.1:$port/" > /dev/null
+                docker rm -f "$container_name"
+                trap - EXIT
 
-      echo "kubectl version:"
-      kubectl version --client
+                docker run --rm \
+                  -v /var/run/docker.sock:/var/run/docker.sock \
+                  aquasec/trivy:latest image --scanners vuln \
+                  --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$image"
 
-      echo "kubelogin version:"
-      kubelogin --version
+                az acr login --name "$ACR_NAME"
+                docker push "$image"
 
-      echo "Getting AKS credentials..."
+                # Carry the exact image and manifests into the deployment stage.
+                mkdir -p "$ARTIFACT_DIR"
+                cp kubernetes/*.yaml "$ARTIFACT_DIR/"
+                printf '%s\n' "$image" > "$ARTIFACT_DIR/image.txt"
+            env:
+              ACR_NAME: $(acrName)
+              RESOURCE_GROUP: $(resourceGroup)
+              IMAGE_REPOSITORY: $(imageRepository)
+              IMAGE_TAG: $(imageTag)
+              ARTIFACT_DIR: $(Build.ArtifactStagingDirectory)/release
 
-      az aks get-credentials \
-        --resource-group "$(resourceGroup)" \
-        --name "$(aksClusterName)" \
-        --overwrite-existing
+          - task: PublishPipelineArtifact@1
+            displayName: Publish deployment manifests and image reference
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/release'
+              artifact: release
 
-      echo "Converting kubeconfig..."
+  - stage: Deploy
+    displayName: Deploy to production AKS
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - deployment: DeployWebapp
+        displayName: Deploy webapp
+        environment: production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: release
 
-      kubelogin convert-kubeconfig -l azurecli
+                - task: AzureCLI@2
+                  displayName: Apply release and verify rollout
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
 
-      echo "Current Kubernetes context:"
+                      tools_dir="$AGENT_TEMPDIRECTORY/aks-tools"
+                      mkdir -p "$tools_dir"
+                      aks_version="$(az aks show --resource-group "$RESOURCE_GROUP" --name "$AKS_CLUSTER_NAME" --query kubernetesVersion --output tsv)"
+                      : "${aks_version:?AKS Kubernetes version was not returned.}"
+                      az aks install-cli \
+                        --client-version "$aks_version" \
+                        --install-location "$tools_dir/kubectl" \
+                        --kubelogin-install-location "$tools_dir/kubelogin"
+                      export PATH="$tools_dir:$PATH"
 
-      kubectl config current-context
+                      az aks get-credentials \
+                        --resource-group "$RESOURCE_GROUP" \
+                        --name "$AKS_CLUSTER_NAME" \
+                        --file "$KUBECONFIG" --overwrite-existing
+                      # Keep kubelogin and kubectl in the authenticated AzureCLI task.
+                      kubelogin convert-kubeconfig -l azurecli
 
-      echo "Testing AKS connection..."
-
-      kubectl get nodes
-
-
-# ============================================================
-# 2. Deploy Kubernetes manifests
-# ============================================================
-- task: AzureCLI@2
-  displayName: 'Deploy Kubernetes manifests'
-  inputs:
-    azureSubscription: '$(azureServiceConnection)'
-    scriptType: bash
-    scriptLocation: inlineScript
-    inlineScript: |
-
-      set -e
-
-      echo "========================================="
-      echo "Kubernetes manifest files"
-      echo "========================================="
-
-      ls -la "$(System.DefaultWorkingDirectory)/kubernetes"
-
-      echo "========================================="
-      echo "Applying Kubernetes manifests"
-      echo "========================================="
-
-      kubectl apply \
-        -f "$(System.DefaultWorkingDirectory)/kubernetes/"
-
-      echo "========================================="
-      echo "Kubernetes resources"
-      echo "========================================="
-
-      kubectl get all -n production
-
-      echo "========================================="
-      echo "Deployments"
-      echo "========================================="
-
-      kubectl get deployments -n production
-
-      echo "========================================="
-      echo "Pods"
-      echo "========================================="
-
-      kubectl get pods -n production
-
-      echo "========================================="
-      echo "Services"
-      echo "========================================="
-
-      kubectl get services -n production
+                      image="$(cat "$RELEASE_DIR/image.txt")"
+                      : "${image:?Release artifact has no image reference.}"
+                      kubectl apply -f "$RELEASE_DIR/namespace.yaml"
+                      kubectl set image --local -f "$RELEASE_DIR/deployment.yaml" \
+                        "webapp=$image" -o yaml | kubectl apply -f -
+                      kubectl apply -f "$RELEASE_DIR/service.yaml" -f "$RELEASE_DIR/hpa.yaml"
+                      if ! kubectl rollout status deployment/webapp -n production --timeout=300s; then
+                        kubectl get pods -n production -o wide || true
+                        kubectl describe deployment webapp -n production || true
+                        exit 1
+                      fi
+                      kubectl get pods,svc,hpa -n production
+                  env:
+                    RESOURCE_GROUP: $(resourceGroup)
+                    AKS_CLUSTER_NAME: $(aksClusterName)
+                    RELEASE_DIR: $(Pipeline.Workspace)/release
+                    KUBECONFIG: $(Agent.TempDirectory)/webapp-kubeconfig

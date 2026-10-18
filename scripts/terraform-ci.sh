@@ -3,10 +3,6 @@ set -euo pipefail
 
 : "${AZURESUBSCRIPTION_SERVICE_CONNECTION_ID:?Run this script in an AzureCLI@2 task.}"
 : "${ARM_OIDC_REQUEST_TOKEN:?Map System.AccessToken into ARM_OIDC_REQUEST_TOKEN.}"
-: "${TFSTATE_RESOURCE_GROUP:?}"
-: "${TFSTATE_STORAGE_ACCOUNT:?}"
-: "${TFSTATE_CONTAINER:?}"
-: "${TFSTATE_KEY:?}"
 export ARM_CLIENT_ID="${servicePrincipalId:?Enable addSpnToEnvironment in AzureCLI@2.}"
 export ARM_TENANT_ID="${tenantId:?}"
 export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
@@ -20,11 +16,21 @@ export TF_VAR_subscription_id="$ARM_SUBSCRIPTION_ID"
 export TF_IN_AUTOMATION=true
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir/terraform"
-terraform init -input=false -lockfile=readonly \
-  -backend-config="resource_group_name=$TFSTATE_RESOURCE_GROUP" \
-  -backend-config="storage_account_name=$TFSTATE_STORAGE_ACCOUNT" \
-  -backend-config="container_name=$TFSTATE_CONTAINER" \
-  -backend-config="key=$TFSTATE_KEY"
+backend_args=()
+if [[ -f backend.hcl ]]; then
+  backend_args+=(-backend-config=backend.hcl)
+else
+  : "${TFSTATE_RESOURCE_GROUP:?Run scripts/bootstrap-state.sh or set TFSTATE_RESOURCE_GROUP.}"
+  : "${TFSTATE_STORAGE_ACCOUNT:?Run scripts/bootstrap-state.sh or set TFSTATE_STORAGE_ACCOUNT.}"
+  : "${TFSTATE_CONTAINER:?}"
+  : "${TFSTATE_KEY:?}"
+fi
+# Explicit CI settings take precedence over the generated backend configuration.
+[[ -z "${TFSTATE_RESOURCE_GROUP:-}" ]] || backend_args+=(-backend-config="resource_group_name=$TFSTATE_RESOURCE_GROUP")
+[[ -z "${TFSTATE_STORAGE_ACCOUNT:-}" ]] || backend_args+=(-backend-config="storage_account_name=$TFSTATE_STORAGE_ACCOUNT")
+[[ -z "${TFSTATE_CONTAINER:-}" ]] || backend_args+=(-backend-config="container_name=$TFSTATE_CONTAINER")
+[[ -z "${TFSTATE_KEY:-}" ]] || backend_args+=(-backend-config="key=$TFSTATE_KEY")
+terraform init -input=false -lockfile=readonly "${backend_args[@]}"
 case "${1:-}" in
   plan)
     terraform plan -input=false -lock-timeout=5m -out=tfplan

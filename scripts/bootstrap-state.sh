@@ -2,10 +2,9 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-: "${TFSTATE_STORAGE_ACCOUNT:?Set TFSTATE_STORAGE_ACCOUNT to a globally unique, lowercase name (3–24 letters/digits).}"
 TFSTATE_RESOURCE_GROUP="${TFSTATE_RESOURCE_GROUP:-rg-tfstate-prod}"
 TFSTATE_LOCATION="${TFSTATE_LOCATION:-centralindia}"
-if [[ ! "$TFSTATE_STORAGE_ACCOUNT" =~ ^[a-z0-9]{3,24}$ ]]; then
+if [[ -n "${TFSTATE_STORAGE_ACCOUNT:-}" && ! "$TFSTATE_STORAGE_ACCOUNT" =~ ^[a-z0-9]{3,24}$ ]]; then
   echo "Invalid storage account name." >&2
   exit 1
 fi
@@ -14,6 +13,21 @@ if [[ -e "$project_dir/terraform/backend.hcl" ]]; then
   exit 1
 fi
 az account show --output none
+if [[ -z "${TFSTATE_STORAGE_ACCOUNT:-}" ]]; then
+  for attempt in {1..10}; do
+    # A project prefix plus 16 random hex characters fits Azure's 24-character limit.
+    candidate="staks$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+    if [[ "$(az storage account check-name --name "$candidate" --query nameAvailable --output tsv)" == true ]]; then
+      TFSTATE_STORAGE_ACCOUNT="$candidate"
+      break
+    fi
+  done
+  if [[ -z "${TFSTATE_STORAGE_ACCOUNT:-}" ]]; then
+    echo "Could not find an available storage account name after 10 attempts." >&2
+    exit 1
+  fi
+fi
+echo "Using Terraform state storage account: $TFSTATE_STORAGE_ACCOUNT"
 principal_id="${TFSTATE_PRINCIPAL_ID:-$(az ad signed-in-user show --query id --output tsv)}"
 az group create --name "$TFSTATE_RESOURCE_GROUP" --location "$TFSTATE_LOCATION" --output none
 az storage account create --name "$TFSTATE_STORAGE_ACCOUNT" \
@@ -50,3 +64,4 @@ container_name       = "tfstate"
 key                  = "production.aks.tfstate"
 EOF
 echo "Backend ready. Configuration written to terraform/backend.hcl."
+echo "Initialize Terraform with: terraform -chdir=terraform init -backend-config=backend.hcl"

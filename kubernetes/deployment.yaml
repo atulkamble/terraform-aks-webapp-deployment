@@ -38,8 +38,8 @@ spec:
               app: webapp
       containers:
         - name: webapp
-          # Replaced by scripts/deploy-app.sh and the application pipeline.
-          image: docker.io/atuljkamble/project
+          # The deploy script and Azure pipeline substitute their ACR login server and release tag.
+          image: atulkamble.azurecr.io/webapp:v1
           ports:
             - name: http
               containerPort: 8080
