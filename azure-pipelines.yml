@@ -13,6 +13,7 @@ pr: none
 pool:
   vmImage: ubuntu-latest
 
+
 variables:
   azureServiceConnection: 'azure-production-connection'
   resourceGroup: 'rg-aks-production'
