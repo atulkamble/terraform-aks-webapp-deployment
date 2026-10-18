@@ -476,3 +476,9 @@ The current endpoint uses public HTTP. TLS, ingress, private endpoints, Key Vaul
 The project provides a repeatable workflow from Terraform provisioning to container delivery on AKS, with autoscaling, identity-based access, approved releases, health checks, and centralized logging.
 
 **License:** [MIT](LICENSE) · **Author:** Atul Kamble
+
+## Deployment screenshots
+
+![Deployment screenshot — 9:38 PM](images/Screenshot%202026-10-18%20at%209.38.47%E2%80%AFPM.png)
+
+![Deployment screenshot — 9:39 PM](images/Screenshot%202026-10-18%20at%209.39.04%E2%80%AFPM.png)
